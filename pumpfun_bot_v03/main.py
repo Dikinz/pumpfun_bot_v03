@@ -11,17 +11,68 @@ observed=set(); latest={}
 
 async def evaluate(mint):
     await asyncio.sleep(settings.observation_seconds)
-    r=db.get_token(mint); s=score_token(r,settings)
-    decision="BUY" if s.score>=settings.min_score else "NO_BUY"
-    db.log_signal(mint,s.score,decision,s.reason)
-    print(f"[SCORE] {mint[:8]} {s.score} {decision} | {s.reason}")
-    if decision=="BUY":
-        ok,why=risk.can_open(trader.cash,len(trader.positions))
+
+    r = db.get_token(mint)
+    s = score_token(r, settings)
+
+    decision = "BUY" if s.score >= settings.min_score else "NO_BUY"
+
+    db.log_signal(
+        mint,
+        s.score,
+        decision,
+        s.reason
+    )
+
+    print(
+        f"[SCORE] {mint[:8]} "
+        f"{s.score} {decision} | {s.reason}"
+    )
+
+    if decision == "BUY":
+        current_equity = trader.equity(latest)
+
+        ok, why = risk.can_open(
+            trader.cash,
+            len(trader.positions),
+            current_equity
+        )
+
         if not ok:
-            db.log_signal(mint,s.score,"BLOCKED",why); print("[RISK]",why); return
-        price=float(r["last_market_cap_sol"] or r["market_cap_sol"] or 0)
-        if price>0 and trader.buy(mint,price,s.score,"score entry"):
-            print(f"[PAPER BUY] {mint[:8]} proxy={price:.4f} cash=${trader.cash:.2f}")
+            db.log_signal(
+                mint,
+                s.score,
+                "BLOCKED",
+                why
+            )
+            print("[RISK]", why)
+            return
+
+        price = float(
+            r["last_market_cap_sol"]
+            or r["market_cap_sol"]
+            or 0
+        )
+
+        if price > 0:
+            opened = trader.buy(
+                mint,
+                price,
+                s.score,
+                "score entry"
+            )
+
+            if opened:
+                current_equity = trader.equity(latest)
+
+                print(
+                    f"[PAPER BUY] {mint[:8]} "
+                    f"proxy={price:.4f} "
+                    f"position=${settings.position_size:.2f} "
+                    f"cash=${trader.cash:.2f} "
+                    f"equity=${current_equity:.2f} "
+                    f"pnl=${current_equity-settings.start_balance:+.2f}"
+                )
 
 async def on_new(d):
     mint=d.get("mint")
